@@ -1453,18 +1453,18 @@ static void *offload_thread_loop(void *context)
         send_callback = false;
         switch(cmd->cmd) {
         case OFFLOAD_CMD_WAIT_FOR_BUFFER:
-            ALOGD("copl(%p):calling compress_wait", out);
+            ALOGV("copl(%p):calling compress_wait", out);
             compress_wait(out->compr, -1);
-            ALOGD("copl(%p):out of compress_wait", out);
+            ALOGV("copl(%p):out of compress_wait", out);
             send_callback = true;
             event = STREAM_CBK_EVENT_WRITE_READY;
             break;
         case OFFLOAD_CMD_PARTIAL_DRAIN:
             ret = compress_next_track(out->compr);
             if(ret == 0) {
-                ALOGD("copl(%p):calling compress_partial_drain", out);
+                ALOGV("copl(%p):calling compress_partial_drain", out);
                 ret = compress_partial_drain(out->compr);
-                ALOGD("copl(%p):out of compress_partial_drain", out);
+                ALOGV("copl(%p):out of compress_partial_drain", out);
                 if (ret < 0)
                     ret = -errno;
             }
@@ -1484,9 +1484,9 @@ static void *offload_thread_loop(void *context)
                 ALOGE("%s: Block drain ready event during SSR", __func__);
             break;
         case OFFLOAD_CMD_DRAIN:
-            ALOGD("copl(%p):calling compress_drain", out);
+            ALOGV("copl(%p):calling compress_drain", out);
             compress_drain(out->compr);
-            ALOGD("copl(%p):calling compress_drain", out);
+            ALOGV("copl(%p):calling compress_drain", out);
             send_callback = true;
             event = STREAM_CBK_EVENT_DRAIN_READY;
             break;
@@ -2112,7 +2112,8 @@ static int out_set_parameters(struct audio_stream *stream, const char *kvpairs)
          * Avoid this by routing audio to speaker until standby.
          */
         if ((out->devices == AUDIO_DEVICE_OUT_AUX_DIGITAL ||
-                out->devices == AUDIO_DEVICE_OUT_ANLG_DOCK_HEADSET) &&
+                out->devices == AUDIO_DEVICE_OUT_ANLG_DOCK_HEADSET ||
+                out->devices == AUDIO_DEVICE_OUT_DGTL_DOCK_HEADSET) &&
                 val == AUDIO_DEVICE_NONE) {
             if (!audio_extn_dolby_is_passthrough_stream(out->flags))
                 val = AUDIO_DEVICE_OUT_SPEAKER;
@@ -2412,7 +2413,7 @@ static ssize_t out_write(struct audio_stream_out *stream, const void *buffer,
             ret = -errno;
         ALOGVV("%s: writing buffer (%d bytes) to compress device returned %d", __func__, bytes, ret);
         if (ret >= 0 && ret < (ssize_t)bytes) {
-            ALOGD("No space available in compress driver, post msg to cb thread");
+            ALOGV("No space available in compress driver, post msg to cb thread");
             send_offload_cmd_l(out, OFFLOAD_CMD_WAIT_FOR_BUFFER);
         } else if (-ENETRESET == ret) {
             ALOGE("copl %s: received sound card offline state on compress write", __func__);
@@ -3769,7 +3770,9 @@ static int adev_open_input_stream(struct audio_hw_device *dev,
     int ret = 0, buffer_size, frame_size;
     int channel_count = audio_channel_count_from_in_mask(config->channel_mask);
     bool is_low_latency = false;
+#ifdef SSR_ENABLED
     bool updated_params = false;
+#endif
 
     *stream_in = NULL;
     if (check_input_parameters(config->sample_rate, config->format, channel_count) != 0) {
@@ -3853,6 +3856,7 @@ static int adev_open_input_stream(struct audio_hw_device *dev,
         in->config = pcm_config_afe_proxy_record;
         in->config.channels = channel_count;
         in->config.rate = config->sample_rate;
+#ifdef SSR_ENABLED
     } else if (!audio_extn_check_and_set_multichannel_usecase(adev,
                 in, config, &updated_params)) {
         if (updated_params == true) {
@@ -3862,6 +3866,7 @@ static int adev_open_input_stream(struct audio_hw_device *dev,
             goto err_open;
         }
         ALOGD("%s: created surround sound session succesfully",__func__);
+#endif
     } else if (audio_extn_compr_cap_enabled() &&
             audio_extn_compr_cap_format_supported(config->format) &&
             (in->dev->mode != AUDIO_MODE_IN_COMMUNICATION)) {

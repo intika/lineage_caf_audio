@@ -330,7 +330,7 @@ int pcm_device_table[AUDIO_USECASE_MAX][2] = {
 };
 
 /* Array to store sound devices */
-static const char * const device_table[SND_DEVICE_MAX] = {
+static char * device_table[SND_DEVICE_MAX] = {
     [SND_DEVICE_NONE] = "none",
     /* Playback sound devices */
     [SND_DEVICE_OUT_HANDSET] = "handset",
@@ -992,7 +992,7 @@ static void query_platform(const char *snd_card_name,
         msm_be_id_array_len  =
             sizeof(msm_device_to_be_id_external_codec) / sizeof(msm_device_to_be_id_internal_codec[0]);
     } else if (!strncmp(snd_card_name, "msm8952-snd-card-mtp",
-                 sizeof("msm8952-snd-card-mtpmsm8952-snd-card-mtp"))) {
+                 sizeof("msm8952-snd-card-mtp"))) {
         strlcpy(mixer_xml_path, MIXER_XML_PATH_MTP,
                 sizeof(MIXER_XML_PATH_MTP));
         msm_device_to_be_id = msm_device_to_be_id_internal_codec;
@@ -3499,9 +3499,18 @@ int64_t platform_render_latency(audio_usecase_t usecase)
 int platform_update_usecase_from_source(int source, int usecase)
 {
     ALOGV("%s: input source :%d", __func__, source);
-    if(source == AUDIO_SOURCE_FM_TUNER)
-        usecase = USECASE_AUDIO_RECORD_FM_VIRTUAL;
-    return usecase;
+    switch(source) {
+        case AUDIO_SOURCE_VOICE_UPLINK:
+            return USECASE_INCALL_REC_UPLINK;
+        case AUDIO_SOURCE_VOICE_DOWNLINK:
+            return USECASE_INCALL_REC_DOWNLINK;
+        case AUDIO_SOURCE_VOICE_CALL:
+            return USECASE_INCALL_REC_UPLINK_AND_DOWNLINK;
+        case AUDIO_SOURCE_FM_TUNER:
+            return USECASE_AUDIO_RECORD_FM_VIRTUAL;
+        default:
+            return usecase;
+    }
 }
 
 bool platform_listen_device_needs_event(snd_device_t snd_device)
@@ -4683,4 +4692,19 @@ int platform_get_wsa_mode(void *adev)
 int platform_get_max_mic_count(void *platform) {
     struct platform_data *my_data = (struct platform_data *)platform;
     return my_data->max_mic_count;
+}
+
+int platform_set_snd_device_name(snd_device_t device, const char *name)
+{
+    int ret = 0;
+
+    if ((device < SND_DEVICE_MIN) || (device >= SND_DEVICE_MAX)) {
+        ALOGE("%s:: Invalid snd_device = %d", __func__, device);
+        ret = -EINVAL;
+        goto done;
+    }
+
+    device_table[device] = strdup(name);
+done:
+    return ret;
 }
